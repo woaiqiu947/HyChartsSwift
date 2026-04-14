@@ -16,12 +16,12 @@ Pod::Spec.new do |s|
     - Thread-safe indicator computation via Swift actor
   DESC
 
-  s.homepage     = 'https://github.com/yuanshipei/HyChartsSwift'
+  s.homepage     = 'https://github.com/woaiqiu947/HyChartsSwift'
   s.license      = { :type => 'MIT', :file => 'LICENSE' }
-  s.author       = { 'yuanshipei' => '' }
+  s.author       = { 'woaiqiu947' => '' }
 
   s.source       = {
-    :git => 'https://github.com/yuanshipei/HyChartsSwift.git',
+    :git => 'https://github.com/woaiqiu947/HyChartsSwift.git',
     :tag => s.version.to_s
   }
 
