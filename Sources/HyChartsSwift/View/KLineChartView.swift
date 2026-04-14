@@ -371,7 +371,6 @@ public final class KLineChartView: UIView {
         store: ChartDataStore,
         mainH: CGFloat
     ) async -> MainTechnicalResults {
-        let chartH = mainH - config.xAxisHeight
         switch config.mainTechnical {
         case .none:
             return .none
