@@ -187,25 +187,77 @@ chart.updateLastModel(latestCandle)
 
 ## Architecture
 
+### Data Flow
+
 ```
-KLineModel (your data)
+Your Model (KLineModel / TimeShareModel)
     ↓  ArrayDataSource / custom ChartDataSource
-ChartDataStore (actor)          — thread-safe model storage & indicator cache
-    ↓  async
-CoordinateMapper (value type)  — price/volume/index ↔ pixel, no side effects
+ChartDataStore (actor)         — thread-safe storage & incremental indicator cache
+    ↓  async/await
+CoordinateMapper (value type)  — price / volume / index ↔ pixel, zero side effects
     ↓
-CALayer pipeline
-    ├── KLineMainLayer          — candles + SMA/EMA/BOLL lines
-    ├── KLineVolumeLayer        — volume bars
-    ├── KLineAuxiliaryLayer     — MACD / KDJ / RSI
-    └── AxisLayer               — grid lines, price labels, time labels
+CALayer rendering pipeline
+    ├── KLineMainLayer         — candles + SMA / EMA / BOLL overlay lines
+    ├── KLineVolumeLayer       — volume bars (main-chart inline or auxiliary slot)
+    ├── KLineAuxiliaryLayer    — MACD / KDJ / RSI / Volume (switchable panel)
+    ├── AxisLayer              — horizontal grid, Y-axis price labels, X-axis time labels
+    └── KLineCursor            — crosshair overlay (tap / long-press)
 ```
+
+### Class Reference
+
+#### Protocols & Enums
+
+| Type | Description |
+|---|---|
+| `KLineModel` | Data protocol for K-line candles. Requires OHLCV + `xLabel`. `timestamp` optional, used for period separator lines. |
+| `TimeShareModel` | Data protocol for intraday ticks. Requires `price`, `volume`, `xLabel`. `average` and `timestamp` optional. |
+| `ChartDataSource` | Generic data-feeding protocol. `ArrayDataSource<M>` is the built-in convenience wrapper. |
+| `Indicator` | Protocol for technical indicator calculators. Supports both full and incremental computation. |
+| `KLineConfiguration` | Value-type config struct. Assign to `chart.configuration` to trigger a redraw. |
+| `MainTechnicalType` | Enum selecting the main-chart overlay: `.none` / `.sma` / `.ema` / `.boll`. |
+| `AuxiliaryType` | Enum selecting the auxiliary panel: `.volume` / `.macd` / `.kdj` / `.rsi`. |
+| `ChartPeriod` | Enum controlling vertical separator line rules: `.minute` / `.daily` / `.weekly` / `.monthly` / `.yearly`. |
+
+#### Data & Computation
+
+| Type | Description |
+|---|---|
+| `ChartDataStore` | Swift `actor`. Holds the full `[KLineRenderModel]` array and all indicator caches. All reads/writes are serialised. Exposes async methods: `smaSeries`, `emaSeries`, `bollSeries`, `macdSeries`, `kdjSeries`, `rsiSeries`. |
+| `KLineRenderModel` | Internal value type. Mirrors `KLineModel` fields plus pixel coordinates (`centerX`, `highY`, `lowY`, `openY`, `closeY`, `volumeY`) filled in by `CoordinateMapper`. |
+| `CoordinateMapper` | Pure `Sendable` value type. Holds chart size, scale, scroll offset, and price/volume extremes. Provides bidirectional transforms and `fillCoordinates(into:startIndex:)`. |
+| `SMAIndicator` | Simple Moving Average. O(n) sliding-window incremental update. |
+| `EMAIndicator` | Exponential Moving Average. O(k) true incremental update for new bars. |
+| `BOLLIndicator` | Bollinger Bands (mid / upper / lower). Based on SMA + standard deviation. |
+| `MACDIndicator` | MACD histogram + DIF + DEM signal line. |
+| `KDJIndicator` | KDJ stochastic oscillator (K / D / J lines). |
+| `RSIIndicator` | Relative Strength Index, supports multiple periods simultaneously. |
+
+#### Rendering Layers
+
+| Type | Description |
+|---|---|
+| `KLineMainLayer` | `CALayer` subclass. Draws all up-candles as a single merged `CGPath`, down-candles as another — one `CAShapeLayer` fill per color group for maximum performance. Also draws the latest-price dashed line and SMA/EMA/BOLL overlay lines. |
+| `KLineVolumeLayer` | `CALayer` subclass. Renders volume bars in the volume sub-panel with the same merged-path strategy. Supports an optional MA line series. |
+| `KLineAuxiliaryLayer` | `CALayer` subclass. Renders whichever `AuxiliaryRenderData` is active: MACD bars + DIF/DEM lines, KDJ three-line, RSI multi-line, or volume bars. Includes a period-separator sub-layer. |
+| `AxisLayer` | `CALayer` subclass. Draws horizontal grid lines (dashed), Y-axis price labels, X-axis time labels, and vertical period-separator lines. Driven purely by `AxisData` — no Store dependency. |
+| `TimeShareMainLayer` | `CALayer` subclass. Draws the filled price-area, price line, average-price dashed line, and day-boundary separator lines for the 5-day view. |
+| `TimeShareVolumeLayer` | `CALayer` subclass. Draws per-tick volume bars coloured by price direction (up / down / flat). |
+| `KLineCursor` | `CALayer` subclass. Crosshair overlay activated by tap or long-press. Renders a vertical line, horizontal price line, and label bubbles for the selected candle. |
+
+#### Views
+
+| Type | Description |
+|---|---|
+| `KLineChartView` | Main public `UIView`. Three sub-panels: main chart (candles + overlays), volume, auxiliary. Handles `UIPanGestureRecognizer` (scroll), `UIPinchGestureRecognizer` (zoom with anchor-index preservation), tap/long-press (crosshair). Drives the full async render pipeline via `rebuildRenderModels()`. |
+| `TimeShareChartView` | Public `UIView` for intraday / 5-day charts. Two sub-panels: price area + volume. No scroll/zoom — all ticks are laid out proportionally across the full width. `load(_:dayCount:)` accepts any `TimeShareModel` conformance. |
 
 ---
 
 ## Demo
 
-Open `Demo/HyChartsDemoSwift.xcodeproj` and run on a simulator or device.
+Open `Demo/HyChartsDemoSwift.xcodeproj` and run on a simulator or device.  
+The demo covers all chart types (分时 / 五日 / 日K / 周K / 月K / 年K) with switchable overlays and indicators.
 
 ---
 
@@ -221,3 +273,5 @@ See [LICENSE](LICENSE) for details.
 This library is a Swift rewrite of [HyCharts](https://github.com/hydreamit/HyCharts)  
 by [@hydreamit](https://github.com/hydreamit), with additional features and architecture  
 improvements based on real-world trading app experience for HK & US markets.
+
+Architecture design, Swift rewrite, and documentation assisted by [Claude Code](https://claude.ai/code) (Anthropic).
